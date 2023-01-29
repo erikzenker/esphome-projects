@@ -1,0 +1,72 @@
+esphome:
+  name: "wintergarten"
+    
+esp32:
+  board: esp32thing_plus
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+    level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "xX8NnLBwLLun/v8YzsjK2Jc0jpIzrvYI9Vd1gXkQl/k="
+
+ota:
+  password: "60ff8a4d2b5b4426e46f2897e8d5f22f"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: True
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Wintergarten Fallback Hotspot"
+    password: "mF9wS3KrCxco"
+
+captive_portal:
+
+i2c:
+  sda: 21
+  scl: 22
+  scan: true
+  id: bus_a
+
+light:
+  - platform: status_led
+    name: "status"
+    pin: 13
+
+sensor:
+  - platform: aht10
+    temperature:
+      name: "Wintergarten Room Temperature"
+    humidity:
+      name: "Wintergarten Room Humidity"
+    update_interval: 5min
+
+deep_sleep:
+  id: deep_sleep_control
+  sleep_duration: 5min
+
+binary_sensor:
+  platform: homeassistant
+  id: prevent_deep_sleep
+  entity_id: input_boolean.prevent_deep_sleep
+
+
+interval:
+  - interval: 20s
+    then:
+      - delay: 10s
+      - if:
+          condition:
+            binary_sensor.is_on: prevent_deep_sleep
+          then:
+            - deep_sleep.prevent: deep_sleep_control
+          else:
+            - deep_sleep.enter: deep_sleep_control

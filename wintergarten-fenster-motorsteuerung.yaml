@@ -1,0 +1,188 @@
+esphome:
+  name: wintergarten-fenster-motor
+
+esp32:
+  board: esp32thing_plus
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "f9PluEeh0LZ8C9PdWEuW+QxOrxlF3LsJBI9T3VlMzC8="
+
+ota:
+  password: "a5a57ee37ab2b8ad59f772afe9cc9ab6"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Motorsteuerung Fallback Hotspot"
+    password: "4UdOOsf5NJSW"
+
+captive_portal:
+
+light:
+  - platform: status_led
+    name: "Status led"
+    pin: 13
+
+i2c:
+  sda: 21
+  scl: 22
+  scan: true
+  id: bus_a
+
+globals:
+  - id: temperature_limit
+    type: float
+    restore_value: true
+    initial_value: '24'
+  - id: temperature_hysteresis
+    type: float
+    restore_value: true
+    initial_value: '2'
+  - id: state
+    type: int
+    restore_value: false
+    initial_value: '0'
+
+switch:
+  - platform: gpio
+    pin: GPIO26
+    name: "Motorsteuerung In1"
+    id: motor_in1
+    interlock: [motor_in2]
+
+  - platform: gpio
+    pin: GPIO25
+    name: "Motorsteuerung In2"
+    id: motor_in2
+    interlock: [motor_in1]
+
+sensor:
+  - platform: aht10
+    temperature:
+      name: "Wintergarten Temperatur"
+      id: sensor_aht10_t
+      on_value:
+        then:
+          - lambda: |-
+              auto current_temperature = x;
+              if(current_temperature >= id(temperature_limit)){
+                id(motor_in2).turn_off();                
+                id(motor_in1).turn_on();
+                
+              }
+              else if (current_temperature <= (id(temperature_limit) - id(temperature_hysteresis))){
+                id(motor_in1).turn_off();
+                id(motor_in2).turn_on();
+              }
+    humidity:
+      name: "Wintergarten Luftfeuchtigkeit"
+      id: sensor_aht10_h
+    update_interval: 1s
+
+
+
+binary_sensor:
+  - platform: gpio
+    pin: 
+      number: GPIO33
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "button_up"
+    id: button_up
+    filters:
+      - delayed_on: 10ms
+    on_press:
+      then:
+        - lambda: |-
+              switch(id(state)){
+                case 0:
+                  break;
+                case 1:
+                  id(temperature_limit) += 1;
+                  break;
+                case 2:
+                  id(temperature_hysteresis) += 0.5;
+                  break;
+                default:
+                  break;
+              };          
+  - platform: gpio
+    pin: 
+      number: GPIO27
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "button_down"
+    id: button_down
+    filters:
+      - delayed_on: 10ms
+    on_press:
+      then:
+        - lambda: |-
+              switch(id(state)){
+                case 0:
+                  break;
+                case 1:
+                  id(temperature_limit) -= 1;
+                  break;
+                case 2:
+                  id(temperature_hysteresis) -= 0.5;
+                  break;
+                default:
+                  break;
+              };                    
+  - platform: gpio
+    pin: 
+      number: GPIO12
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "button_fn"
+    id: button_fn
+    filters:
+      - delayed_on: 10ms
+    on_press:
+      then:
+        - lambda: |-
+              id(state) = (id(state) + 1) % 3;
+
+font:
+  - file: "gfonts://Roboto%20Mono"
+    id: roboto
+    size: 20
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    address: 0x3C
+    lambda: |-
+      switch(id(state)){
+        case 0:
+          it.printf(0, 0, id(roboto), "Temperatur:");
+          it.printf(0, 22, id(roboto), "%.1f°C %s", id(sensor_aht10_t).state, id(motor_in1).state? "AUF" : "ZU");
+          break;
+        case 1:
+          it.printf(0, 0, id(roboto), "Limit:");
+          it.printf(0, 22, id(roboto), "%.1f°C", id(temperature_limit));
+          break;
+        case 2:
+          it.printf(0, 0, id(roboto), "Hysterese:");
+          it.printf(0, 22, id(roboto), "%.1f°C", id(temperature_hysteresis));
+          break;
+        default:
+          break;
+      };      
